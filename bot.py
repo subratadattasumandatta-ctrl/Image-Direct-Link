@@ -26,16 +26,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # =============================================
-# BOT TOKEN aur IMGBB API KEY
+# BOT TOKEN
 # =============================================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-IMGBB_API_KEY = os.environ.get("IMGBB_API_KEY", "")
 
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN environment variable set nahi hai!")
-
-if not IMGBB_API_KEY:
-    raise ValueError("❌ IMGBB_API_KEY environment variable set nahi hai!")
 
 
 # =============================================
@@ -68,49 +64,45 @@ def run_health_server():
 
 
 # =============================================
-# IMGBB UPLOAD FUNCTION
+# CATBOX.MOE UPLOAD FUNCTION (Anonymous, no API key)
 # =============================================
-def upload_to_imgbb(image_bytes: bytes, filename: str, expiry_seconds: int = 0) -> dict:
+def upload_to_catbox(image_bytes: bytes, filename: str, expiry_seconds: int = 0) -> dict:
+    # Note: Catbox.moe links hamesha PERMANENT hote hain.
+    # expiry_seconds parameter yahan sirf compatibility ke liye rakha gaya hai, uska koi effect nahi.
     try:
-        import base64
-        url = "https://api.imgbb.com/1/upload"
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        data = {
-            "key": IMGBB_API_KEY,
-            "image": image_b64,
-            "name": filename,
+        url = "https://catbox.moe/user/api.php"
+        files = {
+            "fileToUpload": (filename, image_bytes),
         }
-        if expiry_seconds > 0:
-            data["expiration"] = str(expiry_seconds)
+        data = {
+            "reqtype": "fileupload",
+        }
 
-        response = requests.post(url, data=data, timeout=60)
+        response = requests.post(url, data=data, files=files, timeout=60)
 
         # Debug logging — logs mein pura response dikhega
-        logger.info(f"ImgBB response status: {response.status_code}")
-        logger.info(f"ImgBB response body: {response.text[:500]}")
+        logger.info(f"Catbox response status: {response.status_code}")
+        logger.info(f"Catbox response body: {response.text[:500]}")
 
         if response.status_code == 200:
-            result = response.json()
-            if result.get("success"):
-                img_data = result.get("data", {})
+            direct_link = response.text.strip()
+
+            # Catbox success par ek direct URL string return karta hai (https://files.catbox.moe/xxxx.jpg)
+            if direct_link.startswith("https://files.catbox.moe/"):
                 return {
                     "success": True,
-                    "direct_link": img_data.get("url", ""),
-                    "view_link": img_data.get("url_viewer", ""),
-                    "delete_link": img_data.get("delete_url", ""),
-                    "size": img_data.get("size", 0),
+                    "direct_link": direct_link,
+                    "view_link": direct_link,
+                    "delete_link": "Catbox par manual delete: https://catbox.moe/user/manage.php",
+                    "size": len(image_bytes),
                 }
             else:
-                error_msg = result.get("error", {})
-                if isinstance(error_msg, dict):
-                    error_msg = error_msg.get("message", "Unknown error")
-                return {"success": False, "error": str(error_msg)}
+                return {"success": False, "error": direct_link[:300] or "Unknown Catbox error"}
         else:
-            # Ab detailed error dikhega, sirf status code nahi
             return {"success": False, "error": f"Server error: {response.status_code} - {response.text[:300]}"}
 
     except requests.exceptions.Timeout:
-        return {"success": False, "error": "ImgBB timeout!"}
+        return {"success": False, "error": "Catbox timeout!"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -220,7 +212,7 @@ async def process_bulk_upload(
             await safe_edit(status_msg, f"⏳ Processing... {i}/{total} ❌ #{i} download fail")
             continue
 
-        result = upload_to_imgbb(image_bytes, img_info["filename"], expiry_val)
+        result = upload_to_catbox(image_bytes, img_info["filename"], expiry_val)
         result["index"] = i
         result["filename"] = img_info["filename"]
         results.append(result)
@@ -325,6 +317,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2. Expiry time choose karo\n"
         "3. Har image ka direct link alag alag pao! 🔗\n\n"
         "✅ *Album support:* Telegram mein select karke ek saath bhejo\n\n"
+        "⚠️ *Note:* Links hamesha *Permanent* rahenge (Catbox.moe permanent hosting deta hai)\n\n"
         "📌 Commands:\n"
         "/start — Bot start karo\n"
         "/help — Madad",
