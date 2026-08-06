@@ -85,6 +85,10 @@ def upload_to_imgbb(image_bytes: bytes, filename: str, expiry_seconds: int = 0) 
 
         response = requests.post(url, data=data, timeout=60)
 
+        # Debug logging — logs mein pura response dikhega
+        logger.info(f"ImgBB response status: {response.status_code}")
+        logger.info(f"ImgBB response body: {response.text[:500]}")
+
         if response.status_code == 200:
             result = response.json()
             if result.get("success"):
@@ -102,7 +106,8 @@ def upload_to_imgbb(image_bytes: bytes, filename: str, expiry_seconds: int = 0) 
                     error_msg = error_msg.get("message", "Unknown error")
                 return {"success": False, "error": str(error_msg)}
         else:
-            return {"success": False, "error": f"Server error: {response.status_code}"}
+            # Ab detailed error dikhega, sirf status code nahi
+            return {"success": False, "error": f"Server error: {response.status_code} - {response.text[:300]}"}
 
     except requests.exceptions.Timeout:
         return {"success": False, "error": "ImgBB timeout!"}
